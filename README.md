@@ -583,7 +583,7 @@ tg.expand();
 
 // API base — укажите ваш сервер (ngrok/VPS)
 // При GitHub Pages Mini App нужен отдельный сервер для API!
-const API_BASE = 'http://127.0.0.1:4040';  // ← замените на ваш публичный URL
+const API_BASE = 'https://bbc64beb90a53977-84-32-50-42.serveousercontent.com';  // ← замените на ваш публичный URL
 
 // ── STATE ──
 let state = {
