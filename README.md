@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
@@ -597,12 +598,9 @@ let state = {
 // ── INIT ──
 async function init() {
   try {
-    const [locsRes, catRes] = await Promise.all([
-      fetch(`${API_BASE}/api/locations`),
-      fetch(`${API_BASE}/api/catalog`)
-    ]);
+    const locsRes = await fetch(`${API_BASE}/api/locations`);
     if (locsRes.ok) state.locations = await locsRes.json();
-    if (catRes.ok)  state.catalog   = await catRes.json();
+    // Каталог загружается позже — после выбора локации
   } catch(e) {
     console.warn('API недоступен, используем демо-данные:', e);
   }
@@ -669,10 +667,29 @@ function selectLocation(id) {
   document.getElementById('btn-choose-location').disabled = false;
 }
 
-function goToCatalog() {
+async function goToCatalog() {
   if (!state.selectedLocation) return;
   document.getElementById('location-label').textContent = state.selectedLocation.name;
   showScreen('screen-catalog');
+
+  // Загружаем каталог для выбранной локации
+  const btn = document.getElementById('btn-choose-location');
+  btn.disabled = true;
+  btn.textContent = '// загрузка...';
+
+  try {
+    const res = await fetch(`${API_BASE}/api/catalog?location_id=${state.selectedLocation.id}`);
+    if (res.ok) {
+      const data = await res.json();
+      // Фильтруем пустые категории
+      state.catalog = data.filter(c => c.products && c.products.length > 0);
+    }
+  } catch(e) {
+    console.warn('Не удалось загрузить каталог для локации:', e);
+  }
+
+  btn.disabled = false;
+  btn.textContent = '▶ Войти в магазин';
   renderCatalog();
 }
 
@@ -785,6 +802,17 @@ function changeQty(id, delta, e) {
   state.cart[id].qty += delta;
   if (state.cart[id].qty <= 0) delete state.cart[id];
   updateCartUI();
+  // Перерисовываем кнопку — включая восстановление кнопки + при qty=0
+  rerenderProductAction(id);
+}
+
+function cartChangeQtyAndSync(id, delta) {
+  if (!state.cart[id]) return;
+  state.cart[id].qty += delta;
+  if (state.cart[id].qty <= 0) delete state.cart[id];
+  updateCartUI();
+  renderCart();
+  // Синхронизируем кнопку в каталоге если DOM существует
   rerenderProductAction(id);
 }
 
@@ -969,7 +997,10 @@ function showScreen(id) {
 
 function goBack(to) {
   showScreen(to);
-  if (to === 'screen-catalog') renderProducts();
+  if (to === 'screen-catalog') {
+    // Полная перерисовка каталога — исправляет баг с кнопкой +
+    renderProducts();
+  }
 }
 
 // ── TOAST ──
@@ -983,6 +1014,39 @@ function showToast(msg) {
 }
 
 init();
+
+// Авто-обновление каталога каждые 30 секунд — изменения видны всем без перезахода
+setInterval(async () => {
+  if (!state.selectedLocation) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/catalog?location_id=${state.selectedLocation.id}&_t=${Date.now()}`);
+    if (res.ok) {
+      const data = await res.json();
+      const updated = data.filter(c => c.products && c.products.length > 0);
+      // Обновляем только если что-то изменилось
+      if (JSON.stringify(updated) !== JSON.stringify(state.catalog)) {
+        state.catalog = updated;
+        const activeScreen = document.querySelector('.screen.active')?.id;
+        if (activeScreen === 'screen-catalog') renderCatalog();
+      }
+    }
+  } catch(e) {}
+}, 30000);
+
+// Авто-обновление локаций каждую минуту
+setInterval(async () => {
+  try {
+    const res = await fetch(`${API_BASE}/api/locations?_t=${Date.now()}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (JSON.stringify(data) !== JSON.stringify(state.locations)) {
+        state.locations = data;
+        const activeScreen = document.querySelector('.screen.active')?.id;
+        if (activeScreen === 'screen-location') renderLocations();
+      }
+    }
+  } catch(e) {}
+}, 60000);
 </script>
 </body>
 </html>
